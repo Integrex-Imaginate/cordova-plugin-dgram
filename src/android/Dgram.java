@@ -3,6 +3,7 @@ package org.apache.cordova.dgram;
 import android.util.Log;
 import android.util.SparseArray;
 import android.util.Base64;
+import java.util.Arrays;
 
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.CordovaPlugin;
@@ -54,12 +55,18 @@ public class Dgram extends CordovaPlugin {
             DatagramPacket packet = new DatagramPacket(data, data.length);
             while (true) {
                 try {
+                    
                     packet.setLength(data.length); // reset packet length due to incomplete UDP Packet received
                     this.m_socket.receive(packet);
-                    String msg = new String(data, 0, packet.getLength(), "UTF-8")
-                            .replace("'", "\'")
-                            .replace("\r", "\\r")
-                            .replace("\n", "\\n");
+                    byte [] subArray = Arrays.copyOfRange(data, 0, packet.getLength());
+                    String msg = "";
+					for (int i = 0; i < subArray.length; ++i)
+						{
+							msg += subArray[i];
+							if (i < subArray.length - 1){
+							 msg += ",";
+							}
+						}
                     String address = packet.getAddress().getHostAddress();
                     int port = packet.getPort();
 
@@ -205,18 +212,23 @@ public class Dgram extends CordovaPlugin {
             final int port = data.getInt(3);
             final String encoding = data.getString(4);
             final DatagramSocket localSocket = socket;
-
+			final JSONArray jsonArray = data.getJSONArray(1);
+			final byte[] bytes2 = new byte[jsonArray.length()];
+			for (int i = 0; i < jsonArray.length(); i++) {bytes2[i]=(byte)(((int)jsonArray.get(i)) & 0xFF);}
             // threadded send to prevent NetworkOnMainThreadException
             cordova.getThreadPool().execute(new Runnable() {
                 public void run() {
                     try {
                         byte[] bytes;
-                        if (encoding.equals("utf-8"))
+                        if (encoding.equals("utf-8")){
                             bytes = message.getBytes("UTF-8");
-                        else if (encoding.equals("base64"))
+                        }else if (encoding.equals("base64")){
                             bytes = Base64.decode(message, Base64.DEFAULT);
-                        else
+						}else if (encoding.equals("byte")){
+							bytes = bytes2;
+                        }else{
                             bytes = new byte[] {0};
+						}
                         DatagramPacket packet = new DatagramPacket(bytes, bytes.length, InetAddress.getByName(address), port);
                         localSocket.send(packet);
                         callbackContext.success(message);
