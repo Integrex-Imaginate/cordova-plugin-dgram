@@ -141,19 +141,37 @@
 -(void)send:(CDVInvokedUrlCommand *)command {
     NSInteger socketID = [[command argumentAtIndex:0] intValue];
     NSString *buffer = [command argumentAtIndex:1];
+    NSArray *buffer2 = [command argumentAtIndex:1];
     NSString *remoteAddress = [command argumentAtIndex:2];
     NSInteger remotePort = [[command argumentAtIndex:3] intValue];
     NSString *encoding = [command argumentAtIndex:4];
     SocketConfig *config = [sockets valueForKey:[SocketConfig convertIDTokKey:socketID]];
     CDVPluginResult *result = nil;
-
+    
     NSData *data = nil;
-    if ([encoding isEqualToString:@"utf-8"])
+    if ([encoding isEqualToString:@"utf-8"]){
         data = [buffer dataUsingEncoding:NSUTF8StringEncoding];
-    else if ([encoding isEqualToString:@"base64"])
+    }else if ([encoding isEqualToString:@"base64"]){
         data = [[NSData alloc] initWithBase64EncodedString:buffer options:0];
-    else
+    }else if ([encoding isEqualToString:@"byte"]){
+        unsigned long size = [buffer2 count];
+       
+        uint8_t *bytes = malloc(sizeof(*bytes) * size);
+        
+        unsigned i = 0;
+
+        for(id object in buffer2){
+            NSString *value = object;
+            int x = [value intValue];
+            bytes[i] = x;
+            i++;
+       }
+        
+        data = [NSData dataWithBytesNoCopy:bytes length:size freeWhenDone:YES];
+        
+    }else{
         data = [NSData data];
+    }
     if (config == nil || config.socketHandle == nil) {
         result = [CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:@"Socket is not open"];
     }
@@ -165,6 +183,7 @@
 
     [self.commandDelegate sendPluginResult:result callbackId:command.callbackId];
 }
+
 
 #pragma mark GCDAsyncUdpSocketDelegate methods
 
@@ -193,11 +212,34 @@
             config = nil;
     }
 
-    NSString *msg = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+   
+    //NSArray *array = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+    
+    //NSString *msg = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    //NSLog(@"message from host message : %@", data);
+    
+    NSMutableString *msg = [NSMutableString string];
+    
+     Byte *byteptr = (Byte*)[data bytes];
+    
+    NSInteger totalData = data.length / sizeof(Byte);
+    
+    for (int i = 0;i<totalData; i++)
+    {
+        
+        if (i < totalData -1){
+        [msg appendFormat:@"%i,", (int)byteptr[i]];
+        }else{
+        [msg appendFormat:@"%i", (int)byteptr[i]];
+        }
+       
+    }
+    
+    
     if (msg != nil && config != nil) {
-        msg = [msg stringByReplacingOccurrencesOfString:@"'" withString:@"\'"];
-        msg = [msg stringByReplacingOccurrencesOfString:@"\n" withString:@"\\n"];
-        msg = [msg stringByReplacingOccurrencesOfString:@"\r" withString:@"\\r"];
+        NSLog(@"Sending message to host: %@", host);        //msg = [msg stringByReplacingOccurrencesOfString:@"'" withString:@"\'"];
+        //msg = [msg stringByReplacingOccurrencesOfString:@"\n" withString:@"\\n"];
+        //msg = [msg stringByReplacingOccurrencesOfString:@"\r" withString:@"\\r"];
         NSString *command = [NSString stringWithFormat:@"cordova.require('cordova-plugin-dgram.dgram')._onMessage(%d,'%@','%@',%d)", (int)config.socketID, msg, host, port];
         [self.commandDelegate evalJs:command scheduledOnRunLoop:YES];
     }
